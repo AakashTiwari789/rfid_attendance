@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import connectDB from './db/index.js';
 import cors from 'cors';
 import "./serialReader.js";
+import { getLastEvent } from './state.js';
 
 
 dotenv.config();
@@ -25,6 +26,11 @@ app.get('/attendance', async (req, res) => {
         console.error("Error fetching attendance:", error);
         res.status(500).json({ error: "Internal Server Error" });
     }
+});
+
+app.get('/last-event', (req, res) => {
+    const evt = getLastEvent();
+    res.json(evt || null);
 });
 
 

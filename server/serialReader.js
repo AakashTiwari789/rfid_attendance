@@ -1,6 +1,7 @@
 import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";
 import { Attendance } from "./models/Attendance.js";
+import { setLastEvent } from "./state.js";
 import player from "play-sound";
 
 // Sound player
@@ -76,18 +77,41 @@ async function onSerialData(data) {
     lastName = text.replace("Name:", "").trim();
 
     try {
-      const entry = new Attendance({
-        uid: lastUID,
-        name: lastName,
-      });
+      // Check last scan for this UID
+      const latest = await Attendance.findOne({ uid: lastUID }).sort({ timestamp: -1 });
+      const now = Date.now();
+      const fiveMinutesMs = 5 * 60 * 1000;
 
-      await entry.save();
-      console.log("✅ Saved →", lastUID, lastName);
+      if (latest && now - new Date(latest.timestamp).getTime() < fiveMinutesMs) {
+        const nextAllowedAt = new Date(new Date(latest.timestamp).getTime() + fiveMinutesMs).toISOString();
+        console.log("⏳ Duplicate within 5 minutes →", lastUID, lastName);
+        setLastEvent({
+          type: "duplicate",
+          uid: lastUID,
+          name: lastName,
+          message: "Your attendance is already marked. Try again after 5 minutes.",
+          nextAllowedAt,
+        });
+      } else {
+        const entry = new Attendance({
+          uid: lastUID,
+          name: lastName,
+        });
+        await entry.save();
+        console.log("✅ Saved →", lastUID, lastName);
 
-      // 🔊 PLAY SOUND ON RFID SCAN
-      play.play("./beep.mp3", (err) => {
-        if (err) console.log("Sound Error:", err);
-      });
+        setLastEvent({
+          type: "accepted",
+          uid: lastUID,
+          name: lastName,
+          message: "Attendance marked successfully.",
+        });
+
+        // 🔊 PLAY SOUND ON RFID SCAN (only on accepted)
+        play.play("./beep.mp3", (err) => {
+          if (err) console.log("Sound Error:", err);
+        });
+      }
 
       // Reset
       lastUID = "";
