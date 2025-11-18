@@ -28,6 +28,28 @@ app.get('/attendance', async (req, res) => {
     }
 });
 
+// Get attendance records from the last N minutes (default 5)
+app.get('/attendance/recent', async (req, res) => {
+    try {
+        const minutes = Number(req.query.minutes) || 5;
+        const uuidsOnly = String(req.query.uuidsOnly).toLowerCase() === 'true';
+        const since = new Date(Date.now() - minutes * 60 * 1000);
+
+        const Attendance = (await import('./models/Attendance.js')).Attendance;
+
+        if (uuidsOnly) {
+            const uids = await Attendance.distinct('uid', { timestamp: { $gte: since } });
+            return res.json(uids);
+        }
+
+        const records = await Attendance.find({ timestamp: { $gte: since } }).sort({ timestamp: -1 });
+        return res.json(records);
+    } catch (error) {
+        console.error("Error fetching recent attendance:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 app.get('/last-event', (req, res) => {
     const evt = getLastEvent();
     res.json(evt || null);

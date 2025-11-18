@@ -62,6 +62,12 @@ function startSerial() {
 let lastUID = "";
 let lastName = "";
 
+async function getRecentUids(minutes = 5) {
+  const since = new Date(Date.now() - minutes * 60 * 1000);
+  const uids = await Attendance.distinct("uid", { timestamp: { $gte: since } });
+  return new Set(uids);
+}
+
 async function onSerialData(data) {
   const text = data.toString().trim();
   console.log("Raw:", text);
@@ -77,13 +83,16 @@ async function onSerialData(data) {
     lastName = text.replace("Name:", "").trim();
 
     try {
-      // Check last scan for this UID
-      const latest = await Attendance.findOne({ uid: lastUID }).sort({ timestamp: -1 });
-      const now = Date.now();
+      // Build recent list (last 5 minutes) and check membership
       const fiveMinutesMs = 5 * 60 * 1000;
+      const recentUids = await getRecentUids(5);
 
-      if (latest && now - new Date(latest.timestamp).getTime() < fiveMinutesMs) {
-        const nextAllowedAt = new Date(new Date(latest.timestamp).getTime() + fiveMinutesMs).toISOString();
+      if (recentUids.has(lastUID)) {
+        // Fetch latest for accurate nextAllowedAt
+        const latest = await Attendance.findOne({ uid: lastUID }).sort({ timestamp: -1 });
+        const nextAllowedAt = latest
+          ? new Date(new Date(latest.timestamp).getTime() + fiveMinutesMs).toISOString()
+          : null;
         console.log("⏳ Duplicate within 5 minutes →", lastUID, lastName);
         setLastEvent({
           type: "duplicate",
